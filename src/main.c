@@ -1,62 +1,48 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <err.h>
 #include <netinet/in.h>
-#include <netinet/ip.h>
+#include <stdlib.h>
 #include <string.h>
-#include <errno.h>
+#include <sys/socket.h>
 #include <unistd.h>
 
-int main() {
-	// Disable output buffering
-	setbuf(stdout, NULL);
- 	setbuf(stderr, NULL);
+static int create_server_socket(void) {
+    int server_socket = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_socket < 0) {
+        err(EXIT_FAILURE, "socket");
+    }
 
-	// You can use print statements as follows for debugging, they'll be visible when running tests.
-	printf("Logs from your program will appear here!\n");
+    const int reuse = 1;
+    if (setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0) {
+        err(EXIT_FAILURE, "setsockopt");
+    }
 
-	// Uncomment this block to pass the first stage
-	//
-	// int server_fd, client_addr_len;
-	// struct sockaddr_in client_addr;
-	//
-	// server_fd = socket(AF_INET, SOCK_STREAM, 0);
-	// if (server_fd == -1) {
-	// 	printf("Socket creation failed: %s...\n", strerror(errno));
-	// 	return 1;
-	// }
-	//
-	// // Since the tester restarts your program quite often, setting SO_REUSEADDR
-	// // ensures that we don't run into 'Address already in use' errors
-	// int reuse = 1;
-	// if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0) {
-	// 	printf("SO_REUSEADDR failed: %s \n", strerror(errno));
-	// 	return 1;
-	// }
-	//
-	// struct sockaddr_in serv_addr = { .sin_family = AF_INET ,
-	// 								 .sin_port = htons(4221),
-	// 								 .sin_addr = { htonl(INADDR_ANY) },
-	// 								};
-	//
-	// if (bind(server_fd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) != 0) {
-	// 	printf("Bind failed: %s \n", strerror(errno));
-	// 	return 1;
-	// }
-	//
-	// int connection_backlog = 5;
-	// if (listen(server_fd, connection_backlog) != 0) {
-	// 	printf("Listen failed: %s \n", strerror(errno));
-	// 	return 1;
-	// }
-	//
-	// printf("Waiting for a client to connect...\n");
-	// client_addr_len = sizeof(client_addr);
-	//
-	// accept(server_fd, (struct sockaddr *) &client_addr, &client_addr_len);
-	// printf("Client connected\n");
-	//
-	// close(server_fd);
+    struct sockaddr_in server_addr;
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    server_addr.sin_port = htons(4221);
 
-	return 0;
+    if (bind(server_socket, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+        err(EXIT_FAILURE, "bind");
+    }
+
+    const int backlog = 5;
+    if (listen(server_socket, backlog) < 0) {
+        err(EXIT_FAILURE, "listen");
+    }
+
+    return server_socket;
+}
+
+int main(int argc, char *argv[]) {
+    int server_socket = create_server_socket();
+    for ( ; ; ) {
+        int client_socket = accept(server_socket, NULL, NULL);
+        if (client_socket < 0) {
+            err(EXIT_FAILURE, "accept");
+        }
+
+        close(client_socket);
+    }
 }
