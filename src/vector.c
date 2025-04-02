@@ -42,3 +42,12 @@ void vector_push_back(Vector *vector, void *element) {
     }
     vector->elements[vector->size++] = element;
 }
+
+bool vector_contains(const Vector *vector, const void *element, int (*element_compare)(const void *, const void *)) {
+    for (size_t i = 0; i < vector->size; i++) {
+        if (element_compare(element, vector->elements[i]) == 0) {
+            return true;
+        }
+    }
+    return false;
+}

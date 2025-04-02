@@ -18,6 +18,7 @@
 #include "http_response.h"
 #include "map.h"
 #include "socket_channel.h"
+#include "vector.h"
 #include "xmalloc.h"
 
 static int root_dirfd;
@@ -57,6 +58,23 @@ static char *size_t_to_str(size_t n) {
     return xstrdup(buffer);
 }
 
+static Vector *split_string(const char *str, const char *delimiters) {
+    Vector *tokens = vector_create();
+    char *s = xstrdup(str);
+    char *last;
+    char *token = strtok_r(s, delimiters, &last);
+    while (token != NULL) {
+        vector_push_back(tokens, xstrdup(token));
+        token = strtok_r(NULL, delimiters, &last);
+    }
+    free(s);
+    return tokens;
+}
+
+static int string_compare(const void *s1, const void *s2) {
+    return strcmp(s1, s2);
+}
+
 static HTTPResponse *handle_echo_endpoint(const HTTPRequest *request) {
     const char *target = http_request_get_target(request);
     const char *message = &target[6];
@@ -70,9 +88,13 @@ static HTTPResponse *handle_echo_endpoint(const HTTPRequest *request) {
     map_put(response_headers, "Content-Length", content_length_str);
     free(content_length_str);
 
-    const char *encoding = map_get(request_headers, "Accept-Encoding");
-    if (encoding != NULL && strcmp(encoding, "gzip") == 0) {
-        map_put(response_headers, "Content-Encoding", "gzip");
+    const char *accept_encoding = map_get(request_headers, "Accept-Encoding");
+    if (accept_encoding != NULL) {
+        Vector *compression_schemes = split_string(accept_encoding, ", ");
+        if (vector_contains(compression_schemes, "gzip", string_compare)) {
+            map_put(response_headers, "Content-Encoding", "gzip");
+        }
+        vector_destroy(compression_schemes, free);
     }
 
     return http_response_create(HTTP_STATUS_OK, response_headers, xstrdup(message));
