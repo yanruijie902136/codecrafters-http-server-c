@@ -1,4 +1,5 @@
 #include "map.h"
+#include "vector.h"
 #include "xmalloc.h"
 
 #include <stddef.h>
@@ -112,4 +113,33 @@ void map_put(Map *map, const char *key, const char *value) {
 const char *map_get(Map *map, const char *key) {
     const AANode *node = aa_search(map->root, key);
     return node == NULL ? NULL : node->value;
+}
+
+static KVPair *kvpair_create(const char *key, const char *value) {
+    KVPair *kvpair = xmalloc(sizeof(KVPair));
+    kvpair->key = xstrdup(key);
+    kvpair->value = xstrdup(value);
+    return kvpair;
+}
+
+void kvpair_destroy(void *ptr) {
+    KVPair *kvpair = ptr;
+    free(kvpair->key);
+    free(kvpair->value);
+    free(kvpair);
+}
+
+static void get_items(const AANode *root, Vector *items) {
+    if (root == NULL) {
+        return;
+    }
+    get_items(root->lch, items);
+    vector_push_back(items, kvpair_create(root->key, root->value));
+    get_items(root->rch, items);
+}
+
+Vector *map_get_items(const Map *map) {
+    Vector *items = vector_create();
+    get_items(map->root, items);
+    return items;
 }

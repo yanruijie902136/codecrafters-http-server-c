@@ -9,7 +9,10 @@
 #include <unistd.h>
 
 #include "http_request.h"
+#include "http_response.h"
+#include "map.h"
 #include "socket_channel.h"
+#include "xmalloc.h"
 
 static int create_server_socket(void) {
     int server_socket = socket(AF_INET, SOCK_STREAM, 0);
@@ -40,21 +43,42 @@ static int create_server_socket(void) {
     return server_socket;
 }
 
+static HTTPResponse *handle_echo_endpoint(const HTTPRequest *request) {
+    const char *target = http_request_get_target(request);
+    const char *body = &target[6];
+    size_t content_length = strlen(body);
+
+    Map *headers = map_create();
+    map_put(headers, "Content-Type", "text/plain");
+    char content_length_str[32];
+    snprintf(content_length_str, sizeof(content_length_str), "%zu", content_length);
+    map_put(headers, "Content-Length", content_length_str);
+
+    return http_response_create(HTTP_STATUS_OK, headers, xstrdup(body), content_length);
+}
+
+static HTTPResponse *handle_request(const HTTPRequest *request) {
+    const char *target = http_request_get_target(request);
+
+    if (strncmp(target, "/echo/", 6) == 0) {
+        return handle_echo_endpoint(request);
+    }
+
+    if (strcmp(target, "/") == 0) {
+        return http_response_create(HTTP_STATUS_OK, NULL, NULL, 0);
+    }
+    return http_response_create(HTTP_STATUS_NOT_FOUND, NULL, NULL, 0);
+}
+
 static void *handle_client(void *arg) {
     SocketChannel *sc = arg;
     for ( ; ; ) {
         HTTPRequest *request = http_request_from_socket_channel(sc);
-        fprintf(stderr, "method = %s\n", http_request_get_method(request));
-        const char *target = http_request_get_target(request);
-        fprintf(stderr, "target = %s\n", target);
-
-        const char *response = "HTTP/1.1 200 OK\r\n\r\n";
-        if (strcmp(target, "/") != 0) {
-            response = "HTTP/1.1 404 Not Found\r\n\r\n";
-        }
-        socket_channel_write(sc, response, strlen(response));
+        HTTPResponse *response = handle_request(request);
+        http_response_write_to_socket_channel(response, sc);
 
         http_request_destroy(request);
+        http_response_destroy(response);
     }
 }
 
