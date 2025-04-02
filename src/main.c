@@ -62,13 +62,20 @@ static HTTPResponse *handle_echo_endpoint(const HTTPRequest *request) {
     const char *message = &target[6];
     size_t content_length = strlen(message);
 
-    Map *headers = map_create();
-    map_put(headers, "Content-Type", "text/plain");
+    const Map *request_headers = http_request_get_headers(request);
+
+    Map *response_headers = map_create();
+    map_put(response_headers, "Content-Type", "text/plain");
     char *content_length_str = size_t_to_str(content_length);
-    map_put(headers, "Content-Length", content_length_str);
+    map_put(response_headers, "Content-Length", content_length_str);
     free(content_length_str);
 
-    return http_response_create(HTTP_STATUS_OK, headers, xstrdup(message));
+    const char *encoding = map_get(request_headers, "Accept-Encoding");
+    if (encoding != NULL && strcmp(encoding, "gzip") == 0) {
+        map_put(response_headers, "Content-Encoding", "gzip");
+    }
+
+    return http_response_create(HTTP_STATUS_OK, response_headers, xstrdup(message));
 }
 
 static HTTPResponse *handle_files_endpoint_get(const HTTPRequest *request) {
