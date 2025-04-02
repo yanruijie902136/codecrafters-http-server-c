@@ -3,6 +3,7 @@
 #include "socket_channel.h"
 #include "xmalloc.h"
 
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -38,8 +39,12 @@ static char *strip(const char *str) {
 
 HTTPRequest *http_request_from_socket_channel(SocketChannel *sc) {
     char *res = socket_channel_read_until(sc, "\r\n");
-    char *method = xstrdup(strtok(res, " "));
-    char *target = xstrdup(strtok(NULL, " "));
+    if (res == NULL) {
+        return NULL;
+    }
+    char *last;
+    char *method = xstrdup(strtok_r(res, " ", &last));
+    char *target = xstrdup(strtok_r(NULL, " ", &last));
     free(res);
 
     Map *headers = map_create();
@@ -55,6 +60,12 @@ HTTPRequest *http_request_from_socket_channel(SocketChannel *sc) {
         char *value = strip(colonp + 1);
         map_put(headers, res, value);
         free(value);
+    }
+
+    const char *content_length_str = map_get(headers, "Content-Length");
+    if (content_length_str != NULL) {
+        uintmax_t content_length = strtoumax(content_length_str, NULL, 10);
+        socket_channel_read_exact(sc, content_length);
     }
 
     return http_request_create(method, target, headers);

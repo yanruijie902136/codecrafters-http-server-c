@@ -43,10 +43,10 @@ static int create_server_socket(void) {
     return server_socket;
 }
 
-static const char *size_t_to_str(size_t n) {
-    static char buffer[32];
+static char *size_t_to_str(size_t n) {
+    char buffer[32];
     snprintf(buffer, sizeof(buffer), "%zu", n);
-    return buffer;
+    return xstrdup(buffer);
 }
 
 static HTTPResponse *handle_echo_endpoint(const HTTPRequest *request) {
@@ -56,7 +56,9 @@ static HTTPResponse *handle_echo_endpoint(const HTTPRequest *request) {
 
     Map *headers = map_create();
     map_put(headers, "Content-Type", "text/plain");
-    map_put(headers, "Content-Length", size_t_to_str(content_length));
+    char *content_length_str = size_t_to_str(content_length);
+    map_put(headers, "Content-Length", content_length_str);
+    free(content_length_str);
 
     return http_response_create(HTTP_STATUS_OK, headers, xstrdup(message));
 }
@@ -68,7 +70,9 @@ static HTTPResponse *handle_user_agent_endpoint(const HTTPRequest *request) {
 
     Map *response_headers = map_create();
     map_put(response_headers, "Content-Type", "text/plain");
-    map_put(response_headers, "Content-Length", size_t_to_str(content_length));
+    char *content_length_str = size_t_to_str(content_length);
+    map_put(response_headers, "Content-Length", content_length_str);
+    free(content_length_str);
 
     return http_response_create(HTTP_STATUS_OK, response_headers, xstrdup(user_agent));
 }
@@ -94,12 +98,17 @@ static void *handle_client(void *arg) {
     SocketChannel *sc = arg;
     for ( ; ; ) {
         HTTPRequest *request = http_request_from_socket_channel(sc);
+        if (request == NULL) {
+            break;
+        }
         HTTPResponse *response = handle_request(request);
         http_response_write_to_socket_channel(response, sc);
 
         http_request_destroy(request);
         http_response_destroy(response);
     }
+
+    socket_channel_destroy(sc);
 }
 
 int main(int argc, char *argv[]) {
@@ -111,7 +120,8 @@ int main(int argc, char *argv[]) {
         }
 
         pthread_t tid;
-        int error = pthread_create(&tid, NULL, handle_client, socket_channel_create(client_socket));
+        SocketChannel *sc = socket_channel_create(client_socket);
+        int error = pthread_create(&tid, NULL, handle_client, sc);
         if (error) {
             errx(EXIT_FAILURE, "cannot spawn thread");
         }

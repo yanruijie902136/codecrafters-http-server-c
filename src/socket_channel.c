@@ -61,6 +61,17 @@ static size_t socket_channel_read_new_data(SocketChannel *sc) {
     return nr;
 }
 
+char *socket_channel_read_exact(SocketChannel *sc, size_t size) {
+    while (sc->current + size > sc->end) {
+        if (socket_channel_read_new_data(sc) == 0) {
+            return NULL;
+        }
+    }
+    char *res = xstrndup(sc->current, size);
+    sc->current += size;
+    return res;
+}
+
 char *socket_channel_read_until(SocketChannel *sc, const char *separator) {
     for ( ; ; ) {
         char *p = find_separator(sc->current, sc->end, separator);
