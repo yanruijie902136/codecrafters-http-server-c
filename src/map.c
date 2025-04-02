@@ -110,7 +110,7 @@ void map_put(Map *map, const char *key, const char *value) {
     aa_insert(&map->root, key, value);
 }
 
-const char *map_get(Map *map, const char *key) {
+const char *map_get(const Map *map, const char *key) {
     const AANode *node = aa_search(map->root, key);
     return node == NULL ? NULL : node->value;
 }

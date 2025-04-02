@@ -8,7 +8,7 @@ typedef struct Map Map;
 Map *map_create(void);
 void map_destroy(Map *map);
 void map_put(Map *map, const char *key, const char *value);
-const char *map_get(Map *map, const char *key);
+const char *map_get(const Map *map, const char *key);
 
 typedef struct {
     char *key;

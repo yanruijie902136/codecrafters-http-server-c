@@ -11,7 +11,7 @@ typedef enum {
 
 typedef struct HTTPResponse HTTPResponse;
 
-HTTPResponse *http_response_create(HTTPStatusCode status_code, Map *headers, char *body, size_t body_size);
+HTTPResponse *http_response_create(HTTPStatusCode status_code, Map *headers, char *body);
 void http_response_destroy(HTTPResponse *response);
 void http_response_write_to_socket_channel(const HTTPResponse *response, SocketChannel *sc);
 

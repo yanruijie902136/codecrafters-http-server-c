@@ -43,18 +43,34 @@ static int create_server_socket(void) {
     return server_socket;
 }
 
+static const char *size_t_to_str(size_t n) {
+    static char buffer[32];
+    snprintf(buffer, sizeof(buffer), "%zu", n);
+    return buffer;
+}
+
 static HTTPResponse *handle_echo_endpoint(const HTTPRequest *request) {
     const char *target = http_request_get_target(request);
-    const char *body = &target[6];
-    size_t content_length = strlen(body);
+    const char *message = &target[6];
+    size_t content_length = strlen(message);
 
     Map *headers = map_create();
     map_put(headers, "Content-Type", "text/plain");
-    char content_length_str[32];
-    snprintf(content_length_str, sizeof(content_length_str), "%zu", content_length);
-    map_put(headers, "Content-Length", content_length_str);
+    map_put(headers, "Content-Length", size_t_to_str(content_length));
 
-    return http_response_create(HTTP_STATUS_OK, headers, xstrdup(body), content_length);
+    return http_response_create(HTTP_STATUS_OK, headers, xstrdup(message));
+}
+
+static HTTPResponse *handle_user_agent_endpoint(const HTTPRequest *request) {
+    const Map *request_headers = http_request_get_headers(request);
+    const char *user_agent = map_get(request_headers, "User-Agent");
+    size_t content_length = strlen(user_agent);
+
+    Map *response_headers = map_create();
+    map_put(response_headers, "Content-Type", "text/plain");
+    map_put(response_headers, "Content-Length", size_t_to_str(content_length));
+
+    return http_response_create(HTTP_STATUS_OK, response_headers, xstrdup(user_agent));
 }
 
 static HTTPResponse *handle_request(const HTTPRequest *request) {
@@ -64,10 +80,14 @@ static HTTPResponse *handle_request(const HTTPRequest *request) {
         return handle_echo_endpoint(request);
     }
 
-    if (strcmp(target, "/") == 0) {
-        return http_response_create(HTTP_STATUS_OK, NULL, NULL, 0);
+    if (strcmp(target, "/user-agent") == 0) {
+        return handle_user_agent_endpoint(request);
     }
-    return http_response_create(HTTP_STATUS_NOT_FOUND, NULL, NULL, 0);
+
+    if (strcmp(target, "/") == 0) {
+        return http_response_create(HTTP_STATUS_OK, NULL, NULL);
+    }
+    return http_response_create(HTTP_STATUS_NOT_FOUND, NULL, NULL);
 }
 
 static void *handle_client(void *arg) {

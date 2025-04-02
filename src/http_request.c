@@ -3,6 +3,7 @@
 #include "socket_channel.h"
 #include "xmalloc.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -51,7 +52,7 @@ HTTPRequest *http_request_from_socket_channel(SocketChannel *sc) {
 
         char *colonp = strchr(res, ':');
         *colonp = '\0';
-        char *value = strip(colonp);
+        char *value = strip(colonp + 1);
         map_put(headers, res, value);
         free(value);
     }

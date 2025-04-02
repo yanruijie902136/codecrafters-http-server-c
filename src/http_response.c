@@ -4,6 +4,8 @@
 #include "vector.h"
 #include "xmalloc.h"
 
+#include <assert.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,20 +14,27 @@ struct HTTPResponse {
     HTTPStatusCode status_code;
     Map *headers;
     char *body;
-    size_t body_size;
+    uintmax_t content_length;
 };
 
-HTTPResponse *http_response_create(HTTPStatusCode status_code, Map *headers, char *body, size_t body_size) {
+HTTPResponse *http_response_create(HTTPStatusCode status_code, Map *headers, char *body) {
     HTTPResponse *response = xmalloc(sizeof(HTTPResponse));
     response->status_code = status_code;
     response->headers = headers;
     response->body = body;
-    response->body_size = body_size;
+    if (body != NULL) {
+        assert(headers != NULL);
+        const char *content_length_str = map_get(headers, "Content-Length");
+        assert(content_length_str != NULL);
+        response->content_length = strtoumax(content_length_str, NULL, 10);
+    }
     return response;
 }
 
 void http_response_destroy(HTTPResponse *response) {
-    map_destroy(response->headers);
+    if (response->headers != NULL) {
+        map_destroy(response->headers);
+    }
     free(response->body);
     free(response);
 }
@@ -57,6 +66,6 @@ void http_response_write_to_socket_channel(const HTTPResponse *response, SocketC
     socket_channel_write(sc, "\r\n", 2);
 
     if (response->body != NULL) {
-        socket_channel_write(sc, response->body, response->body_size);
+        socket_channel_write(sc, response->body, response->content_length);
     }
 }
