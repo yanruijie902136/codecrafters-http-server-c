@@ -6,6 +6,9 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+/**
+ * Creates a listening socket via socket(2), bind(2), and listen(2).
+ */
 static int create_server_socket(void) {
     int server_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (server_socket < 0) {
@@ -42,6 +45,11 @@ int main(int argc, char *argv[]) {
         if (client_socket < 0) {
             err(EXIT_FAILURE, "accept");
         }
+
+        char buffer[1024];
+        recv(client_socket, buffer, sizeof(buffer), 0);
+        const char *response = "HTTP/1.1 200 OK\r\n\r\n";
+        send(client_socket, response, strlen(response), 0);
 
         close(client_socket);
     }
