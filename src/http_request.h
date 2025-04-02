@@ -11,5 +11,6 @@ void http_request_destroy(HTTPRequest *request);
 const char *http_request_get_method(const HTTPRequest *request);
 const char *http_request_get_target(const HTTPRequest *request);
 const Map *http_request_get_headers(const HTTPRequest *request);
+const char *http_request_get_body(const HTTPRequest *request);
 
 #endif

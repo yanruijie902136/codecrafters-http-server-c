@@ -43,6 +43,8 @@ static const char *status_code_to_reason_phrase(HTTPStatusCode status_code) {
     switch (status_code) {
     case HTTP_STATUS_OK:
         return "OK";
+    case HTTP_STATUS_CREATED:
+        return "Created";
     case HTTP_STATUS_NOT_FOUND:
         return "Not Found";
     }

@@ -12,13 +12,15 @@ struct HTTPRequest {
     char *method;
     char *target;
     Map *headers;
+    char *body;
 };
 
-static HTTPRequest *http_request_create(char *method, char *target, Map *headers) {
+static HTTPRequest *http_request_create(char *method, char *target, Map *headers, char *body) {
     HTTPRequest *request = xmalloc(sizeof(HTTPRequest));
     request->method = method;
     request->target = target;
     request->headers = headers;
+    request->body = body;
     return request;
 }
 
@@ -62,13 +64,13 @@ HTTPRequest *http_request_from_socket_channel(SocketChannel *sc) {
         free(value);
     }
 
+    char *body = NULL;
     const char *content_length_str = map_get(headers, "Content-Length");
     if (content_length_str != NULL) {
         uintmax_t content_length = strtoumax(content_length_str, NULL, 10);
-        socket_channel_read_exact(sc, content_length);
+        body = socket_channel_read_exact(sc, content_length);
     }
-
-    return http_request_create(method, target, headers);
+    return http_request_create(method, target, headers, body);
 }
 
 void http_request_destroy(HTTPRequest *request) {
@@ -88,4 +90,8 @@ const char *http_request_get_target(const HTTPRequest *request) {
 
 const Map *http_request_get_headers(const HTTPRequest *request) {
     return request->headers;
+}
+
+const char *http_request_get_body(const HTTPRequest *request) {
+    return request->body;
 }

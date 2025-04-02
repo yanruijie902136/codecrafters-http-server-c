@@ -3,11 +3,13 @@
 #include <dirent.h>
 #include <err.h>
 #include <fcntl.h>
+#include <inttypes.h>
 #include <netinet/in.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/fcntl.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -69,7 +71,7 @@ static HTTPResponse *handle_echo_endpoint(const HTTPRequest *request) {
     return http_response_create(HTTP_STATUS_OK, headers, xstrdup(message));
 }
 
-static HTTPResponse *handle_files_endpoint(const HTTPRequest *request) {
+static HTTPResponse *handle_files_endpoint_get(const HTTPRequest *request) {
     const char *target = http_request_get_target(request);
     const char *filename = &target[7];
 
@@ -87,11 +89,13 @@ static HTTPResponse *handle_files_endpoint(const HTTPRequest *request) {
     for (size_t left = content_length; left > 0; ) {
         ssize_t nr = read(fd, p, left);
         if (nr < 0) {
-            err(EXIT_FAILURE, "read");
+            err(EXIT_FAILURE, "%s", filename);
         }
         p += nr;
         left -= nr;
     }
+
+    close(fd);
 
     Map *headers = map_create();
     map_put(headers, "Content-Type", "application/octet-stream");
@@ -100,6 +104,41 @@ static HTTPResponse *handle_files_endpoint(const HTTPRequest *request) {
     free(content_length_str);
 
     return http_response_create(HTTP_STATUS_OK, headers, body);
+}
+
+static HTTPResponse *handle_files_endpoint_post(const HTTPRequest *request) {
+    const char *target = http_request_get_target(request);
+    const char *filename = &target[7];
+
+    int fd = openat(root_dirfd, filename, O_WRONLY | O_CREAT | O_TRUNC);
+    if (fd < 0) {
+        err(EXIT_FAILURE, "%s", filename);
+    }
+
+    const Map *headers = http_request_get_headers(request);
+    const char *content_length_str = map_get(headers, "Content-Length");
+    size_t left = strtoumax(content_length_str, NULL, 10);
+    const char *p = http_request_get_body(request);
+    while (left > 0) {
+        ssize_t nw = write(fd, p, left);
+        if (nw < 0) {
+            err(EXIT_FAILURE, "%s", filename);
+        }
+        p += nw;
+        left -= nw;
+    }
+
+    close(fd);
+
+    return http_response_create(HTTP_STATUS_CREATED, NULL, NULL);
+}
+
+static HTTPResponse *handle_files_endpoint(const HTTPRequest *request) {
+    const char *method = http_request_get_method(request);
+    if (strcmp(method, "POST") == 0) {
+        return handle_files_endpoint_post(request);
+    }
+    return handle_files_endpoint_get(request);
 }
 
 static HTTPResponse *handle_user_agent_endpoint(const HTTPRequest *request) {
