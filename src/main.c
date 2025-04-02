@@ -1,11 +1,15 @@
 #include <arpa/inet.h>
+#include <assert.h>
+#include <dirent.h>
 #include <err.h>
+#include <fcntl.h>
 #include <netinet/in.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include "http_request.h"
@@ -13,6 +17,8 @@
 #include "map.h"
 #include "socket_channel.h"
 #include "xmalloc.h"
+
+static int root_dirfd;
 
 static int create_server_socket(void) {
     int server_socket = socket(AF_INET, SOCK_STREAM, 0);
@@ -63,6 +69,39 @@ static HTTPResponse *handle_echo_endpoint(const HTTPRequest *request) {
     return http_response_create(HTTP_STATUS_OK, headers, xstrdup(message));
 }
 
+static HTTPResponse *handle_files_endpoint(const HTTPRequest *request) {
+    const char *target = http_request_get_target(request);
+    const char *filename = &target[7];
+
+    int fd = openat(root_dirfd, filename, O_RDONLY);
+    if (fd < 0) {
+        return http_response_create(HTTP_STATUS_NOT_FOUND, NULL, NULL);
+    }
+
+    struct stat statbuf;
+    fstat(fd, &statbuf);
+    size_t content_length = statbuf.st_size;
+
+    char *body = xmalloc(content_length);
+    char *p = body;
+    for (size_t left = content_length; left > 0; ) {
+        ssize_t nr = read(fd, p, left);
+        if (nr < 0) {
+            err(EXIT_FAILURE, "read");
+        }
+        p += nr;
+        left -= nr;
+    }
+
+    Map *headers = map_create();
+    map_put(headers, "Content-Type", "application/octet-stream");
+    char *content_length_str = size_t_to_str(content_length);
+    map_put(headers, "Content-Length", content_length_str);
+    free(content_length_str);
+
+    return http_response_create(HTTP_STATUS_OK, headers, body);
+}
+
 static HTTPResponse *handle_user_agent_endpoint(const HTTPRequest *request) {
     const Map *request_headers = http_request_get_headers(request);
     const char *user_agent = map_get(request_headers, "User-Agent");
@@ -84,6 +123,10 @@ static HTTPResponse *handle_request(const HTTPRequest *request) {
         return handle_echo_endpoint(request);
     }
 
+    if (strncmp(target, "/files/", 7) == 0) {
+        return handle_files_endpoint(request);
+    }
+
     if (strcmp(target, "/user-agent") == 0) {
         return handle_user_agent_endpoint(request);
     }
@@ -96,6 +139,7 @@ static HTTPResponse *handle_request(const HTTPRequest *request) {
 
 static void *handle_client(void *arg) {
     SocketChannel *sc = arg;
+
     for ( ; ; ) {
         HTTPRequest *request = http_request_from_socket_channel(sc);
         if (request == NULL) {
@@ -109,9 +153,17 @@ static void *handle_client(void *arg) {
     }
 
     socket_channel_destroy(sc);
+    return NULL;
 }
 
 int main(int argc, char *argv[]) {
+    if (argc == 3) {
+        assert(strcmp(argv[1], "--directory") == 0);
+        root_dirfd = dirfd(opendir(argv[2]));
+    } else {
+        root_dirfd = AT_FDCWD;
+    }
+
     int server_socket = create_server_socket();
     for ( ; ; ) {
         int client_socket = accept(server_socket, NULL, NULL);
