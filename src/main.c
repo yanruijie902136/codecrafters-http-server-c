@@ -9,10 +9,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/fcntl.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <zconf.h>
+#include <zlib.h>
 
 #include "http_request.h"
 #include "http_response.h"
@@ -75,29 +76,55 @@ static int string_compare(const void *s1, const void *s2) {
     return strcmp(s1, s2);
 }
 
+static void gzip_compress(char *dest, size_t *dest_len, const char *source, size_t source_len) {
+    z_stream zs;
+    zs.zalloc = Z_NULL;
+    zs.zfree = Z_NULL;
+    zs.opaque = Z_NULL;
+    zs.avail_in = (uInt)source_len;
+    zs.next_in = (Bytef *)source;
+    zs.avail_out = (uInt)(*dest_len);
+    zs.next_out = (Bytef *)dest;
+    deflateInit2(&zs, Z_DEFAULT_COMPRESSION, Z_DEFLATED, 15 | 16, 8, Z_DEFAULT_STRATEGY);
+    deflate(&zs, Z_FINISH);
+    deflateEnd(&zs);
+    *dest_len = zs.total_out;
+}
+
 static HTTPResponse *handle_echo_endpoint(const HTTPRequest *request) {
     const char *target = http_request_get_target(request);
     const char *message = &target[6];
-    size_t content_length = strlen(message);
-
-    const Map *request_headers = http_request_get_headers(request);
 
     Map *response_headers = map_create();
     map_put(response_headers, "Content-Type", "text/plain");
-    char *content_length_str = size_t_to_str(content_length);
-    map_put(response_headers, "Content-Length", content_length_str);
-    free(content_length_str);
 
-    const char *accept_encoding = map_get(request_headers, "Accept-Encoding");
+    bool has_gzip = false;
+    const char *accept_encoding = map_get(http_request_get_headers(request), "Accept-Encoding");
     if (accept_encoding != NULL) {
         Vector *compression_schemes = split_string(accept_encoding, ", ");
         if (vector_contains(compression_schemes, "gzip", string_compare)) {
-            map_put(response_headers, "Content-Encoding", "gzip");
+            has_gzip = true;
         }
         vector_destroy(compression_schemes, free);
     }
 
-    return http_response_create(HTTP_STATUS_OK, response_headers, xstrdup(message));
+    char *body;
+    size_t body_size;
+    if (has_gzip) {
+        map_put(response_headers, "Content-Encoding", "gzip");
+        body_size = 8192;
+        body = xmalloc(body_size);
+        gzip_compress(body, &body_size, message, strlen(message));
+    } else {
+        body = xstrdup(message);
+        body_size = strlen(message);
+    }
+
+    char *s = size_t_to_str(body_size);
+    map_put(response_headers, "Content-Length", s);
+    free(s);
+
+    return http_response_create(HTTP_STATUS_OK, response_headers, body);
 }
 
 static HTTPResponse *handle_files_endpoint_get(const HTTPRequest *request) {
