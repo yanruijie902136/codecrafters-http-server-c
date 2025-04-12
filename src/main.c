@@ -159,6 +159,11 @@ static HTTPResponse *handle_files_endpoint_get(const HTTPRequest *request) {
     map_put(headers, "Content-Length", content_length_str);
     free(content_length_str);
 
+    const char *connection = map_get(http_request_get_headers(request), "Connection");
+    if (connection != NULL) {
+        map_put(headers, "Connection", connection);
+    }
+
     return http_response_create(HTTP_STATUS_OK, headers, body);
 }
 
@@ -171,8 +176,8 @@ static HTTPResponse *handle_files_endpoint_post(const HTTPRequest *request) {
         err(EXIT_FAILURE, "%s", filename);
     }
 
-    const Map *headers = http_request_get_headers(request);
-    const char *content_length_str = map_get(headers, "Content-Length");
+    const Map *request_headers = http_request_get_headers(request);
+    const char *content_length_str = map_get(request_headers, "Content-Length");
     size_t left = strtoumax(content_length_str, NULL, 10);
     const char *p = http_request_get_body(request);
     while (left > 0) {
@@ -185,6 +190,12 @@ static HTTPResponse *handle_files_endpoint_post(const HTTPRequest *request) {
     }
 
     close(fd);
+
+    Map *response_headers = map_create();
+    const char *connection = map_get(http_request_get_headers(request), "Connection");
+    if (connection != NULL) {
+        map_put(response_headers, "Connection", connection);
+    }
 
     return http_response_create(HTTP_STATUS_CREATED, NULL, NULL);
 }
@@ -208,6 +219,11 @@ static HTTPResponse *handle_user_agent_endpoint(const HTTPRequest *request) {
     map_put(response_headers, "Content-Length", content_length_str);
     free(content_length_str);
 
+    const char *connection = map_get(http_request_get_headers(request), "Connection");
+    if (connection != NULL) {
+        map_put(response_headers, "Connection", connection);
+    }
+
     return http_response_create(HTTP_STATUS_OK, response_headers, xstrdup(user_agent));
 }
 
@@ -226,10 +242,16 @@ static HTTPResponse *handle_request(const HTTPRequest *request) {
         return handle_user_agent_endpoint(request);
     }
 
-    if (strcmp(target, "/") == 0) {
-        return http_response_create(HTTP_STATUS_OK, NULL, NULL);
+    Map *response_headers = map_create();
+    const char *connection = map_get(http_request_get_headers(request), "Connection");
+    if (connection != NULL) {
+        map_put(response_headers, "Connection", connection);
     }
-    return http_response_create(HTTP_STATUS_NOT_FOUND, NULL, NULL);
+
+    if (strcmp(target, "/") == 0) {
+        return http_response_create(HTTP_STATUS_OK, response_headers, NULL);
+    }
+    return http_response_create(HTTP_STATUS_NOT_FOUND, response_headers, NULL);
 }
 
 static void *handle_client(void *arg) {
@@ -240,11 +262,23 @@ static void *handle_client(void *arg) {
         if (request == NULL) {
             break;
         }
+
+        const Map *headers = http_request_get_headers(request);
+        const char *connection = map_get(headers, "Connection");
+        bool close_connection = false;
+        if (connection != NULL && strcmp(connection, "close") == 0) {
+            close_connection = true;
+        }
+
         HTTPResponse *response = handle_request(request);
         http_response_write_to_socket_channel(response, sc);
 
         http_request_destroy(request);
         http_response_destroy(response);
+
+        if (close_connection) {
+            break;
+        }
     }
 
     socket_channel_destroy(sc);
